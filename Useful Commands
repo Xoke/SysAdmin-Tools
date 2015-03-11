@@ -1,0 +1,7 @@
+Office 365
+
+Find external forwarding emails
+Get-Mailbox -Filter {ForwardingSMTPAddress -ne $null} | ft Name,ForwardingSMTPAddress,DeliverToMailboxAndForward -Autosize
+
+Find internal forwarding emails
+Get-Mailbox -Filter {ForwardingAddress -ne $null} | ft Name,ForwardingAddress,DeliverToMailboxAndForward -Autosize
