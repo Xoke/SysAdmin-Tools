@@ -1,0 +1,69 @@
+# This script will look in a specific domain for users
+# and see if they have a specific office 365 license
+# and only one.  It will report anyone who doesn't match
+# the single good license unless they have a department
+# set so you can filter out service accounts or similar
+# We also ignore any account who has a password set to
+# not expire (like disabled accounts)
+# For those with the single good license, we check that
+# all of the options (Lync, Office etc) are enabled
+# as that can also cause problems.  It will report any
+# that are disabled
+
+# If you have multiple domains you can limit
+$Domain = "company.com"
+# Check which license we actually want
+$GoodLicense = "company:STANDARDWOFFPACK"
+$DepartmentToIgnore = "No_Office"
+
+Clear
+
+# Pull all the users from o365
+$Users = Get-MsolUser -All -DomainName $Domain
+
+$UserCount = $Users.Count
+$UsersWrongCount = 0
+
+# Loop through all the users
+ForEach ($User in $Users)
+{
+    # Check they have a single license
+    If ($User.Licenses.Count -eq 1)
+    {      
+        # Check it is the 'good' one
+        If ($User.Licenses.AccountSkuId -eq $GoodLicense)
+        {
+            ForEach ($Services in $User.Licenses.ServiceStatus)
+            {
+                If ($Services.ProvisioningStatus -eq "Disabled")
+                {
+                    Write-Host $User.DisplayName "(" $User.UserPrincipalName ") has" $Services.ServicePlan.ServiceName "disabled"
+                    $UsersWrongCount += 1
+                }
+            }        
+        }
+        # Else warn it is wrong
+        Else
+        {
+            Write-Host $User.DisplayName "has the incorrect license"
+            $UsersWrongCount += 1
+        }
+    }
+    # else we don't have a single license
+    Else
+    {
+        # But only if not in No365 dept        
+        If ($User.Department -ne $DepartmentToIgnore)
+        {
+            # And they have passwords that expire (as disabled accounts don't)
+            # Technically we might miss some here, but there is the passwords not expiring check also
+            If ($User.PasswordNeverExpires -ne "True")
+            {
+                Write-Host $User.DisplayName "has" $User.Licenses.Count "licenses"
+                $UsersWrongCount += 1
+            }
+        }        
+    }
+}
+
+Write-Host $UsersWrongCount "of" $UserCount "users are wrong"
