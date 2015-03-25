@@ -1,0 +1,26 @@
+$Policy = "User_Policy"
+$Server = "full.server@name.here"
+
+$Users = Read-Host "Please enter the username to enable"
+$Users = $Users.Trim()
+
+Enable-CsUser -Identity "$Users" -RegistrarPool $Server -SipAddressType UserPrincipalName
+Write-Host "Enabled $Users"
+
+# Must wait else the policy doesn't work :(
+Sleep 20
+
+Grant-CsClientPolicy -Identity "$Users" -PolicyName $Policy
+
+# To create a policy you can use something similar to the following
+# Set-CsClientPolicy -Identity VideoRoom `
+#					-Description "Policy to lock down generic machines"`
+#					-DisableOneNote12Integration $True `
+#					-DisablePoorNetworkWarnings $True `
+#					-DisplayPhoto NoPhoto `
+#					-DisableSavingIM $True `
+#					-EnableFullScreenVideo $True `
+#					-EnableIMAutoArchiving $False `
+#					-TracingLevel Off
+#
+# Full list of options here: https://technet.microsoft.com/en-us/library/gg398300.aspx
