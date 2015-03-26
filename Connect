@@ -1,5 +1,3 @@
-# This loads up modules for you (if not loaded already) and connects to o365 (if not connected)
-
 Function Check-Module($ModName)
 {
 
@@ -25,7 +23,8 @@ Function Check-Module($ModName)
 
 Clear
 
-$ModulesToLoad = "MSOnline", "Lync", "ActiveDirectory"
+$ModulesFailed = $False
+$ModulesToLoad = "MSOnline", "ActiveDirectory", "Lync"
 
 ForEach ($Module in $ModulesToLoad)
 {
@@ -35,8 +34,14 @@ ForEach ($Module in $ModulesToLoad)
     }
     Else
     {
-        Write-Host "Failed to Load Module $Module - Exiting" -ForegroundColor Red
+        Write-Host "Failed to Load Module $Module" -ForegroundColor Red
+        $ModulesFailed = $True
     }
+}
+
+If ($ModulesFailed)
+{
+    Exit
 }
 
 If ( -Not (Get-PSSession))
