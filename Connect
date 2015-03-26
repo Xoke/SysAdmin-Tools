@@ -1,0 +1,53 @@
+# This loads up modules for you (if not loaded already) and connects to o365 (if not connected)
+
+Function Check-Module($ModName)
+{
+
+    If( -Not (Get-Module -Name $ModName))
+    {
+
+        If(Get-Module -ListAvailable -Name $ModName)
+        {
+            Import-Module -Name $ModName
+            Return $True
+        }
+        Else
+        {
+            Return $False
+        }
+    }
+    Else
+    {
+        Return $True
+    }
+
+}
+
+Clear
+
+$ModulesToLoad = "MSOnline", "Lync", "ActiveDirectory"
+
+ForEach ($Module in $ModulesToLoad)
+{
+    If (Check-Module $Module)
+    {
+        Write-Host "Found Module $Module" -ForegroundColor Green
+    }
+    Else
+    {
+        Write-Host "Failed to Load Module $Module - Exiting" -ForegroundColor Red
+    }
+}
+
+If ( -Not (Get-PSSession))
+{
+
+	$AdminLogin = [Environment]::Username
+	$AdminLogin += [Environment]::UserDNSDomain
+    $UserCredential = Get-Credential $AdminLogin
+    $Session = New-PSSession –ConfigurationName Microsoft.Exchange -ConnectionUri https://ps.outlook.com/powershell -Credential $UserCredential -Authentication Basic -AllowRedirection
+    Import-PSSession $Session
+    Connect-MsolService –Credential $UserCredential
+}
+
+#Remove-Module MSOnline, Lync, ActiveDirectory
