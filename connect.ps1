@@ -1,0 +1,5 @@
+# Connect to o365.  Run obfuscate.ps1 to get the $i line, and drop that in here
+$i = '5144f6746a0b5c1bde2c9d4742c2c3feb4316fedad70989260803a3cb5f9190376492d1116743f0423413b16050a5345MgB8AHIANQBCAEkAQgBOAEUAUABEAEMARwA5ADYAaAAyAE0AQwBoADcAVQB4AGcAPQA9AHwAMABmAGIAZQBmAGEAMQAxADYAZgBhAGMAYQA4AGUANQA0ADYANwA1AGIAMAAxAGUANABjAGEAMAA1AGUANQAzAGUAYQA5AGQAYQBhADUAMwBhADIAZgAwAGMAZQBmADEAOAA5AGYAMQAwAGQAMgAwAGUAZABmADgAZgBjAGMAOQBkADIAZgAwAGMAMwAwADAAYwAwAGEAOQA5AGQAMQA5AGIAZAAyAGMANQAxAGUANgA1ADgAZAAzAGEAZABiADgAMgAwADcAMgA3AGMAYgBlADAAYQAxAGEAMgAzADUAMQA1AGMAMwA0ADcAMgA5AGMAOAA2ADQAMQBjADUANAA5AA==';$cred = New-Object PSCredential('username_here', (ConvertTo-SecureString $i.SubString(64) -k ($i.SubString(0,64) -split "(?<=\G[0-9a-f]{2})(?=.)" | % { [Convert]::ToByte($_,16) })))
+$Session = New-PSSession –ConfigurationName Microsoft.Exchange -ConnectionUri https://ps.outlook.com/powershell -Credential $UserCredential -Authentication Basic -AllowRedirection
+Import-PSSession $Session -AllowClobber
+Connect-MsolService –Credential $UserCredential
