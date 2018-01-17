@@ -1,151 +1,247 @@
 <#
--------------------------------------------------
-DESCRIPTION
-    Check things for a user that are forwarding
-    emails to external addresses
--------------------------------------------------
-EXAMPLE
-    PS C:\> ForwardCheck.ps1
-    Check all users
-    PS C:\> ForwardCheck.ps1 -User john.smith
-    Check john.smith only
--------------------------------------------------
-INPUTS
-    • -User (optional) username to check
-    • -Debug (optional) Display added debug text
-    • -Skip (optional) skip disconnecting and email
-        (very useful when testing)
--------------------------------------------------
-OUTPUTS
-    • Email
--------------------------------------------------
-NOTES
-    General notes
--------------------------------------------------
-TODO 
-    • Anything to do?
--------------------------------------------------
-BUGS
-    • Any known bugs?
+.SYNOPSIS
+    Retrieve accounts that are forwarding email
+
+.DESCRIPTION
+    Checks Exchange Online to identify all mailboxes that are forwarding email
+
+.EXAMPLE 1: Check a single user to see if they are forwarding their email
+    Get-ForwardedMail -User john.smith
+
+    .EXAMPLE 2: Check all users to see who is forwarding their email
+    Get-ForwardedMail
+
+    .EXAMPLE 3: Check a single user to see if they are forwarding their email and send a notification
+    Get-ForwardedMail -User john.smith `
+                      -SMTPServer "exchange-01" `
+                      -To "me@somecollege.edu" `
+                      -From "noreply@somecollege.edu" `
+                      -Subject "Forwarding Check" 
+
+                      .EXAMPLE 4: Check all users to see who is forwarding their email, but with a Filter
+    Get-ForwardedMail -FilterList "*@somecollege.edu" 
+
+    .EXAMPLE 5: Check all users to see who is forwarding their email, but with a Filter, and send a notification
+    Get-ForwardedMail -SMTPServer "exchange-01" `
+                      -To "me@somecollege.edu" `
+                      -From "noreply@somecollege.edu" `
+                      -Subject "Forwarding Check" `
+                      -FilterList "*@somecollege.edu" 
+
+.INPUTS
+    None
+.OUTPUTS
+    PSCustomObject
 #>
 
-Param
-(
-    [string]$User = "",
-    [switch]$Debug = $False,
-    [switch]$Skip = $False
-)
+function Get-ForwardedMail {
+    [CmdletBinding(DefaultParameterSetName='Parameter Set 1',
+                   PositionalBinding=$false,
+                   HelpUri = 'http://www.microsoft.com/',
+                   ConfirmImpact='Medium')]
+    [Alias()]
+    [OutputType([String])]
+    Param (
+        # Specific User to search Forwarding Rules for
+        [Parameter(Mandatory=$false,
+                   Position=0,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='Parameter Set 1')]
+        [ValidateNotNull()]
+        [ValidateNotNullOrEmpty()]
+        [Alias("Mailbox", "Username")] 
+        $User,
 
-# Setup here
-$SMTPServer = "exchange-01"              # Server to use for email
-$EmailFrom = "noreply@somecollege.edu"   # Email will use this as from address
-$EmailTo = "me@somecollege.edu"          # Who should receive the email
-$EmailSubject = "Forwarding Check"       # Subject
-$MatchEmails = "*@somecollege.edu"       # Filter out these emails (to skip students)
+        # SMTP Server if you want to send a email notification
+        [Parameter(Mandatory=$true,
+                   Position=1,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='SendEmail')]
+        [string]$SMTPServer,
 
-# See if we have an active connection already
-$Connections = Get-PSSession | Where {$_.State -eq 'Opened'} | Measure-Object
-If ($Connections.Count -eq 0)
-{
-    # If not connect then clear the screen
-    C:\Scripts\Connect.ps1
-    Clear-Host
-}
+        # From address if you want to send a email notification
+        [Parameter(Mandatory=$true,
+                   Position=2,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='SendEmail')]
+        [string]$From,
 
-# If a username was not passed in
-If ($User -eq "")
-{
-    # Grab the full list of users (only enabled, only users, filtering emails as per above)
-    If ($Debug) {Write-Output "No -user"}
-    $Users = Get-MsolUser -EnabledFilter EnabledOnly -All | Where-Object {$_.UserType -eq "Member" -And $_.SignInName -Like $MatchEmails}
-}
-Else
-{
-    # If username was used, just pull that user
-    If ($Debug) {Write-Output "-User $User"}
-    $Users = Get-ADUser $User -Properties Mail | Get-MSOLUser
-}
+        # To address if you want to send a email notification
+        [Parameter(Mandatory=$true,
+                   Position=3,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='SendEmail')]
+        $To,
 
-$Log = "Users forwarding emails`n"
-# Keep track of how many users (just to display something on screen)
-$Count = 1
+        # Subject if you want to send a email notification
+        [Parameter(Mandatory=$true,
+                   Position=4,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='SendEmail')]
+        $Subject,
 
-If ($Debug) {Write-Output "Found $($Users.Count) Users"}
-
-# Go through each user
-ForEach ($Person in $Users)
-{
+        # List to filter out email address
+        [Parameter(Mandatory=$false,
+                   Position=5,
+                   ValueFromPipelineByPropertyName=$true,
+                   ParameterSetName='Parameter Set 1')]
+        $FilterList
+    )
     
-    # Show either every line if debug, or count every 10 if not
-    If ($Debug)
+    Begin 
     {
-        Write-Output "User $Count of $($Users.Count) [$($Person.UserPrincipalName)]"
-    }
-    Else
-    {
-        If ($Count % 10 -eq 0)
+        Write-Verbose 'Checking if there is an active connection already'
+        $Connections = Get-PSSession | Where-Object { $_.State -eq 'Opened' } | Measure-Object
+        If ($Connections.Count -eq 0)
         {
-            Write-Output "User $Count of $($Users.Count)"
+            Write-Verbose -Message 'Not active connection found.'
+            # If not connect then clear the screen
+            C:\Scripts\Connect.ps1
+            Clear-Host
         }
+        
+        $AllUsers = @()
+        $ReturnObject = @()
+        $AlertObject = @()
     }
-
-    # Check if user is forwarding emails externally
-    # Note, we have this blocked so this shouldn't happen!
-    $Forwards = Get-Mailbox $Person.UserPrincipalName | Select-Object ForwardingAddress, ForwardingSMTPAddress, DeliverToMailboxAndForward
-
-    If (($Forwards.ForwardingAddress -ne $Null -And `
-        $Forwards.ForwardingAddress -like '@') -Or `
-        $Forwards.ForwardingSMTPAddress -ne $Null)
+    
+    Process 
     {
-        # This should never happen, as forwarding address is internal only, and forwarding smtp address should be disabled
-        Write-Output "$($Person.UserPrincipalName) Warning - Forwarding to External email $($Forwards.ForwardingAddress) $($Forwards.ForwardingSMTPAddress)"
-        $Log += "$($Person.UserPrincipalName) Warning - Forwarding to External email`n"
-    }
+        Write-Verbose -Message 'Checking to see if a User was specified'
 
-    If ($Debug) {Write-Output "Getting Rules"}
-
-    # Pull the rules from the user
-    $Rules = Get-InboxRule -Mailbox $Person.UserPrincipalName
-
-    If ($Debug)
-    {
-        $RuleCount = $Rules.Count
-        $CurrentRule = 1
-    }
-
-    # Loop through each rule to see if they are forwarding emails
-    ForEach ($Rule in $Rules)
-    {
-
-        If ($Debug) {Write-Output "Rule $CurrentRule / $RuleCount"}
-
-        # "EX:/" are internal emails, so we match ones not forwarding internally
-        If ($Rule.ForwardTo -ne $null -and $Rule.ForwardTo -notmatch "EX:/")
+        if (-not($PSBoundParameters.ContainsKey('User')))
         {
-            $Temp = "$($Person.UserPrincipalName) [Enabled: $($Rule.Enabled)] '$($Rule.Name)' => $($Rule.ForwardTo)"
-            Write-Output $Temp
-            $Log += $Temp
-            $Log += "`n"
+            Write-Verbose -Message 'Retrieving all user accounts who are enabled'
+            Write-Debug -Message 'Retrieving all user accounts since no User was specified'
+            
+            $AllUsers = Get-MsolUser -EnabledFilter EnabledOnly -All | `
+                            Where-Object {$_.UserType -eq "Member" -And $_.SignInName -Like $MatchEmails}
+        }
+        elseif ($PSBoundParameters.ContainsKey(('User')))
+        {
+            Write-Verbose -Message "Retrieving information about {0}" -f $User
+            Write-Debug -Message "Retrieving informaiton about $User"
+
+            $AllUsers = Get-ADUser $User -Properties Mail | Get-MSOLUser
         }
 
-        If ($Debug) {$CurrentRule += 1}
+        foreach ($person in $AllUsers)
+        {
+            $i++
+            Write-Progress -Activity 'Searching for all Users' -Status 'Progress:' -PercentComplete (($i / $AllUsers.Count)  * 100)
+            
+            Write-Debug "Checking User [$($person.UserPrincipalName)]"
 
-    }
+            Write-Verbose -Message "Checking if $($person.UserPrincipalName) is forwarding emails externally"
 
-    $Count++
+            $Forwards = Get-Mailbox $person.UserPrincipalName | `
+                            Select-Object ForwardingAddress, ForwardingSMTPAddress, DeliverToMailboxAndForward
 
-}
+            If (($Forwards.ForwardingAddress -ne $Null -And $Forwards.ForwardingAddress -like '@') -Or $Forwards.ForwardingSMTPAddress -ne $Null)
+            {
+                Write-Warning -Message "$($person.UserPrincipalName) Warning - Forwarding to External email $($Forwards.ForwardingAddress) $($Forwards.ForwardingSMTPAddress)"
 
-$Log += "`nChecked $($Users.Count) users`n"
-$Log += "`n"
-$Log += "Checked for external forwards (should be blocked)`n"
-$Log += "and for rules forwarding with an @ sign in them (so not internal forward)`n"
+                Write-Verbose -Message 'Identified internal account is forwarding to an internal address'
 
-$Users = $Null
+                $props = @{
+                    User                  = $person.UserPrincipalName
+                    ForwardingAddress     = $Forwards.ForwardingAddress
+                    ForwardingSMTPAddress = $Forwards.ForwardingSMTPAddress
+                }
 
-If (!$Skip)
-{
-    C:\Scripts\Disconnect.ps1
-    Send-MailMessage -SmtpServer $SMTPServer -From $EmailFrom -To $EmailTo -Subject $EmailSubject -Body $Log
-    Write-Output "Mail Sent"
-}
+                $tempObject = New-Object -TypeName PSCustomObject -Property $props
+                $AlertObject += $tempObject
+            }
+
+            Write-Debug -Message 'Getting Rules'
+
+            Write-Verbose -Message "Getting Rules for $($Person.UserPrincipalName)"
+            $Rules = Get-InboxRule -Mailbox $Person.UserPrincipalName
+
+            Write-Verbose -Message "$($Person.UserPrincipalName) has $($Rules.Count) Forwarding Rules!"
+
+            ForEach ($Rule in $Rules)
+            {
+                Write-Verbose -Message 'Iterating through all found rules'
+                Write-Debug -Message "Looking through Rule $CurrentRule out of $RuleCount"
+
+                # "EX:/" are internal emails, so we match ones not forwarding internally
+                If ($Rule.ForwardTo -ne $null -and $Rule.ForwardTo -notmatch "EX:/")
+                {
+                    Write-Verbose -Message 'Identified Rule Match'
+                    $props = @{
+                        User          = $person.UserPrincipalName
+                        EnabledStatus = $Rule.Enabled
+                        RuleName      = $Rule.Name
+                        ForwardTo     = $Rule.ForwardTo
+                    }
+                    
+                    Write-Verbose "$($Person.UserPrincipalName) [Enabled: $($Rule.Enabled)] '$($Rule.Name)' => $($Rule.ForwardTo)"
+
+                    $tempObject = New-Object -TypeName PSCustomObject -Property $props
+                    $ReturnObject += $tempObject
+                }
+                else 
+                {
+                    Write-Verbose -Message "$($person.UserPrincipalName) does not have any identified rules"
+                }
+            } # End of Foreach Rules
+        } # End of Foreach All Users
+    } # End of Process Block
+    
+    End 
+    {
+        if ($PSCmdlet.ParameterSetName -eq 'SendEmail')
+        {
+            Write-Verbose -Message 'Checking for any warning accounts'
+            if ($AlertObject)
+            {
+                Write-Verbose -Message 'Warning Accounts Are Present!  Sending Email Notification!'
+                $MailProps = @{
+                    SmtpServer = $SMTPServer
+                    From       = $EmailFrom
+                    To         = $EmailTo
+                    Subject    = $EmailSubject
+                    Body       = $AlertObject
+                }
+                Send-MailMessag @MailProps
+                Write-Verbose -Message 'Email Sent!'
+
+                Write-Output $AlertObject
+            }
+            
+            Write-Verbose -Message 'Checking for accounts with Forwarded Email Rules'
+            if($ReturnObject)
+            {
+                Write-Verbose -Message 'Accounts Identified with Forwarding Rules!  Sending Email Notification!'
+                $MailProps = @{
+                    SmtpServer = $SMTPServer
+                    From       = $EmailFrom
+                    To         = $EmailTo
+                    Subject    = $EmailSubject
+                    Body       = $ReturnObject
+                }
+                Send-MailMessag @MailProps
+                Write-Verbose -Message 'Email Sent!'
+
+                Write-Output $ReturnObject
+            }
+        } # End of if statement checking for SendEmail ParameterSet
+        else 
+        {
+            Write-Verbose -Message 'Function is NOT sending an email'
+            
+            if($AlertObject)
+            {
+                Write-Verbose -Message 'Outputting Warning Accounts!'
+                Write-Output -InputObject $AlertObject
+            }
+
+            if($ReturnObject)
+            {
+                Write-Verbose -Message 'Outputting Accounts Identified with Forwarding Rules!'
+                Write-Output -InputObject $ReturnObject
+            }
+        } # End of writing Output to console
+    } # End of End block
+} # End of Get-ForwardedEmail Function
