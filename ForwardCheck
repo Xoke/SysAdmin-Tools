@@ -1,0 +1,178 @@
+<#
+-------------------------------------------------
+DESCRIPTION
+    Check things for a user that are forwarding
+    emails to external addresses
+-------------------------------------------------
+EXAMPLE
+    PS C:\> ForwardCheck.ps1
+        Check all users
+    PS C:\> ForwardCheck.ps1 -User john.smith
+        Check john.smith only
+    PS C:\> ForwardCheck.ps1 -Domain example.com
+        Check all users in example.com domain
+        (useful if you have multiple domains,
+        e.g. one for students)
+-------------------------------------------------
+INPUTS
+    • -User (optional) username to check
+    • -Debug (optional) Display added debug text
+    • -Skip (optional) skip disconnecting and email
+        (very useful when testing)
+-------------------------------------------------
+OUTPUTS
+    • Email
+-------------------------------------------------
+NOTES
+    Set up a scheduled task to run this once a day
+-------------------------------------------------
+TODO 
+    • Anything to do?
+-------------------------------------------------
+BUGS
+    • Any known bugs?
+#>
+
+Param
+(
+    [string]$User = "",
+    [string]$Domain = "company.com",
+    [string]$SMTPServer = "servername",
+    [string]$EmailFrom = "noreply@company.com",
+    [string]$EmailSubject = "Forwarding Check",
+    [switch]$Debug = $False,
+    [switch]$Skip = $False
+)
+
+$EmailTo = "emailgoeshere@company[dot]com"
+
+# Once you have checked and confirmed rules, you can add the rule ID here to skip it in the future
+$SkipRules = @( '1' , '2' , '3' , '4' , '5')
+
+# See if we have an active connection already
+$Connections = Get-PSSession | Where-Object {$_.State -eq 'Opened'} | Measure-Object
+If ($Connections.Count -eq 0)
+{
+    # If not connect then clear the screen
+    C:\Scripts\Connect.ps1
+    Clear-Host
+}
+
+# If a username was not passed in
+If ($User -eq "")
+{
+    # Grab the full list of users (only enabled, only users, filtering emails as per above)
+    If ($Debug) {Write-Output "No -user"}
+    $Users = Get-MsolUser -EnabledFilter EnabledOnly -Domain $Domain -All | Where-Object {$_.UserType -eq "Member" -And $_.isLicensed -eq "TRUE" }
+}
+Else
+{
+    # If username was used, just pull that user
+    If ($Debug) {Write-Output "-User $User"}
+    $Users = Get-ADUser $User -Properties Mail | Get-MSOLUser
+}
+
+$Log = "Users forwarding emails`n"
+# Keep track of how many users (just to display something on screen)
+$Count = 1
+
+If ($Debug) {Write-Output "Found $($Users.Count) Users"}
+
+# Go through each user
+ForEach ($Person in $Users)
+{
+    
+    # Show either every line if debug, or count every 10 if not
+    If ($Debug)
+    {
+        Write-Output "User $Count of $($Users.Count) [$($Person.UserPrincipalName)]"
+    }
+    Else
+    {
+        If ($Count % 10 -eq 0)
+        {
+            Write-Output "User $Count of $($Users.Count)"
+        }
+    }
+
+    # Check if user is forwarding emails externally
+    # Note, we have this blocked so this shouldn't happen!
+    $Forwards = Get-Mailbox $Person.UserPrincipalName | Select-Object ForwardingAddress, ForwardingSMTPAddress
+
+    If (($Null -NE $Forwards.ForwardingAddress -And `
+        $Forwards.ForwardingAddress -like '@') -Or `
+        $Null -NE $Forwards.ForwardingSMTPAddress)
+    {
+        # This should never happen, as forwarding address is internal only, and forwarding smtp address should be disabled
+        $Temp = "$($Person.UserPrincipalName) Warning - Forwarding to External email $($Forwards.ForwardingAddress) $($Forwards.ForwardingSMTPAddress)"
+        Write-Output $Temp
+        $Log += $Temp
+        $Log += "`n`n"
+    }
+
+    If ($Debug) {Write-Output "Getting Rules"}
+
+    # Pull the rules from the user
+    $Rules = Get-InboxRule -Mailbox $Person.UserPrincipalName
+
+    If ($Debug)
+    {
+        $RuleCount = $Rules.Count
+        $CurrentRule = 1
+    }
+
+    # Loop through each rule to see if they are forwarding emails
+    ForEach ($Rule in $Rules)
+    {
+
+        If ($Debug) {Write-Output "Rule $CurrentRule / $RuleCount"}
+
+        # "EX:/" are internal emails, so we match ones not forwarding internally
+        #If ($Rule.ForwardTo -ne $null -and $Rule.ForwardTo -notmatch "EX:/")
+        If (($Null -NE $Rule.ForwardTo -And $Rule.ForwardTo -notmatch "EX:/") -Or `
+            ($Null -NE $Rule.ForwardAsAttachmentTo -And $Rule.ForwardAsAttachmentTo -notmatch "EX:/"))
+        {
+            $Temp = "$($Person.UserPrincipalName) [Enabled: $($Rule.Enabled)] '$($Rule.Name)' => $($Rule.ForwardTo)"
+            Write-Output $Temp
+            $Log += $Temp
+            $Log += "`n`n"
+
+            # Remove-InboxRule -Mailbox $Person.UserPrincipalName -Identity $Rule.Name
+
+        }
+        # Rules to delete emails
+        ElseIf ($Rule.DeleteMessage)
+        {
+
+            If ($SkipRules -NotContains $Rule.RuleIdentity)
+            {
+                $Temp = "$($Person.UserPrincipalName) [Enabled: $($Rule.Enabled)] '$($Rule.Name)' => $($Rule.Description) [$($Rule.RuleIdentity)]"
+                #$Temp = "'$($Rule.RuleIdentity)', ``"
+                Write-Output $Temp
+                $Log += $Temp
+                $Log += "`n`n"            
+            }
+
+        }
+
+        If ($Debug) {$CurrentRule += 1}
+
+    }
+
+    $Count++
+
+}
+
+$Log += "`nChecked $($Users.Count) users`n`n"
+$Log += "Checked for external forwards (should be blocked)`n"
+$Log += "and for rules forwarding with an @ sign in them (so not internal forward)`n"
+
+$Users = $Null
+
+If (!$Skip)
+{
+    C:\Scripts\Disconnect.ps1
+
+    Send-MailMessage -SmtpServer $SMTPServer -From $EmailFrom -To $EmailTo -Subject $EmailSubject -Body $Log
+    Write-Output "Mail Sent Send-MailMessage -SmtpServer $SMTPServer -From $EmailFrom -To $EmailTo -Subject $EmailSubject -Body $Log"
+}
