@@ -213,9 +213,9 @@ While ($Loop)
             #Pause
         }
 
-        s
+        v
         {
-            $Results | Out-GridView            
+            $Results | Out-GridView
         }
 
         x

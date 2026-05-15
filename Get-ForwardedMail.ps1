@@ -202,7 +202,7 @@ function Get-ForwardedMail {
                     Subject    = $EmailSubject
                     Body       = $AlertObject
                 }
-                Send-MailMessag @MailProps
+                Send-MailMessage @MailProps
                 Write-Verbose -Message 'Email Sent!'
 
                 Write-Output $AlertObject
@@ -219,7 +219,7 @@ function Get-ForwardedMail {
                     Subject    = $EmailSubject
                     Body       = $ReturnObject
                 }
-                Send-MailMessag @MailProps
+                Send-MailMessage @MailProps
                 Write-Verbose -Message 'Email Sent!'
 
                 Write-Output $ReturnObject

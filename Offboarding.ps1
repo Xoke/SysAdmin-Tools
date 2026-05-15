@@ -298,7 +298,7 @@ ForEach ($UserLicense in $UserLicenses.Licenses)
 }
 
 # Grant permissions to inbox for the manager, if requested
-If ($ConfirmPermissions = 'y')
+If ($ConfirmPermissions -eq 'y')
 {
 
     # Complicated to recurse round and find exact permissions and compare to what we want.

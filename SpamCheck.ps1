@@ -349,6 +349,5 @@ Else
     Write-Host "To delete emails, you must have -Delete, -From, and -Subject"
 }
 
-Exit
-
 If (!$Debug) {C:\Scripts\Disconnect.ps1}
+Exit
