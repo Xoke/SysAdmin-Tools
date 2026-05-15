@@ -1,9 +1,4 @@
-# Close all sessions
+# Disconnect from Exchange Online and Microsoft Graph
 
-$AllSessions = Get-PSSession
-
-ForEach ($CurrentSession in $AllSessions)
-{
-    Remove-PSSession $CurrentSession
-    Write-Host Closing Session $CurrentSession
-}
+Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
+Disconnect-MgGraph -ErrorAction SilentlyContinue

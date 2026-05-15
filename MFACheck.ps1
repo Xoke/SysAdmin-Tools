@@ -26,11 +26,7 @@ $EmailSubject = "MFA Check"
 $EmailBody = ""
 
 # See if we have an active connection
-$Connections = Get-PSSession | Where-Object {$_.State -eq 'Opened'} | Measure-Object
-If ($Connections.Count -eq 0)
-{
-    C:\Scripts\Connect.ps1
-}
+if (-not (Get-ConnectionInformation -ErrorAction SilentlyContinue)) { C:\Scripts\Connect.ps1 }
 
 # See if we are running on a single user
 If ($User -Ne "")

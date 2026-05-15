@@ -91,11 +91,9 @@ function Get-ForwardedMail {
     Begin 
     {
         Write-Verbose 'Checking if there is an active connection already'
-        $Connections = Get-PSSession | Where-Object { $_.State -eq 'Opened' } | Measure-Object
-        If ($Connections.Count -eq 0)
+        if (-not (Get-ConnectionInformation -ErrorAction SilentlyContinue))
         {
-            Write-Verbose -Message 'Not active connection found.'
-            # If not connect then clear the screen
+            Write-Verbose -Message 'No active connection found.'
             C:\Scripts\Connect.ps1
             Clear-Host
         }

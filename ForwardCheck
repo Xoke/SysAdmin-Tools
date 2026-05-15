@@ -50,10 +50,8 @@ $EmailTo = "emailgoeshere@company[dot]com"
 $SkipRules = @( '1' , '2' , '3' , '4' , '5')
 
 # See if we have an active connection already
-$Connections = Get-PSSession | Where-Object {$_.State -eq 'Opened'} | Measure-Object
-If ($Connections.Count -eq 0)
+if (-not (Get-ConnectionInformation -ErrorAction SilentlyContinue))
 {
-    # If not connect then clear the screen
     C:\Scripts\Connect.ps1
     Clear-Host
 }

@@ -4,11 +4,7 @@ Param
     [int]$Age = 60
 )
 
-$Connections = Get-PSSession | Where-Object {$_.State -eq 'Opened'} | Measure-Object
-If ($Connections.Count -eq 0)
-{
-    C:\Scripts\Connect.ps1
-}
+if (-not (Get-ConnectionInformation -ErrorAction SilentlyContinue)) { C:\Scripts\Connect.ps1 }
 
 # Stuff goes here!
 $Results = Search-UnifiedAuditLog -StartDate (Get-Date).AddDays(0 - $Age) -EndDate (Get-Date) -Operations UserLoggedIn -UserIds $User | Select-Object -ExpandProperty AuditData | ConvertFrom-Json | Select-Object -ExpandProperty ClientIP | Group-Object -NoElement

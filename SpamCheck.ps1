@@ -111,12 +111,7 @@ Else
 # Connect if needed
 #If ($Help -EQ $False)
 #{
-    $Connections = Get-PSSession | Where-Object {$_.State -eq 'Opened'} | Measure-Object
-
-    If ($Connections.Count -eq 0)
-    {
-        C:\Scripts\Connect.ps1
-    }
+    if (-not (Get-ConnectionInformation -ErrorAction SilentlyContinue)) { C:\Scripts\Connect.ps1 }
 
 #}
 
