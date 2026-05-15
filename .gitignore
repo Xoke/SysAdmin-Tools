@@ -1,0 +1,5 @@
+# Claude Code
+.claude/
+
+# Battery log output from Battery_Check.ps1
+battery_*.csv
